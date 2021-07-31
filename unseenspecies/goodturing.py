@@ -109,6 +109,44 @@ def RFA_good_turing(t, prev, r):
     return res
 
 
+def get_goodturing_df(CU_aggr, tmax):
+    """
+    convenience function to do multiple estimators at once. Unfortunattely they differ slightly in how they define t.
+    We standardize that here
+
+    :param CU_aggr: a dictionary with the prevalences (freq of copy per molecule)
+    :param tmax: maximum t (t-fold the original sample size) to estimate teh unseen species. If we set t=1 the estimator would be identity, t=2 asks for the number of species in a smaple of twice the size
+
+    :returns: three dataframe, one per estimator. Contains the read-depth, the number of UMIs seen and the t-factor
+    """
+    gridpoints = 500
+
+    n_umi_Total = sum(CU_aggr.values())
+    n_reads_Total = sum([k*v for k,v in CU_aggr.items() if k>0])
+
+
+    t_GT = np.linspace(0.1, 1, 10) # the original GT estimator only works up to twice the sample size
+    GT = pd.DataFrame([{'n_reads':n_reads_Total+n_reads_Total*t, 'n_umi': n_umi_Total+good_turing(t=t, prev=CU_aggr), 't': t} for t in t_GT])
+
+    # for SGT, t is defined as: take a sample of t-times the original size. The estimator is the number of newly found species
+    # its like generating a compmound sample old+new and ask for the total number of species observed
+    t_SGT = np.linspace(1.01, tmax-1, gridpoints)  # goes from 2fold to x-fold
+    SGT = pd.DataFrame([{'n_reads':n_reads_Total+n_reads_Total*t, 'n_umi': n_umi_Total+smoothed_good_turing(t=t, prev=CU_aggr), 't': t} for t in t_SGT])
+
+    # for RFA thigns are defined a little different: given an old sample of size, if we take a new sample of size t x old, how many species do we see in the new sample (forgetting about the old)
+    x = pd.DataFrame([{'i': k, 'n_i': v} for k,v in CU_aggr.items()]).sort_values('i')
+
+    t_RFA = np.linspace(0.1, tmax, gridpoints)
+    RFA = pd.DataFrame([{'n_reads':n_reads_Total*t, 'n_umi': RFA_good_turing(t=float(t), prev=x, r=1), 't': t} for t in t_RFA])
+
+    return SGT, GT, RFA
+
+
+
+
+
+
+
 def good_turing_R(A):
     """
     for a count vector A, this estimates the proportions, taking into account
